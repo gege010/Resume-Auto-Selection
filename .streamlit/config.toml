@@ -1,7 +1,7 @@
 # Resume Auto-Selection DSS — .streamlit config
 [server]
 port = 8501
-address = "0.0.0.0"
+address = "localhost"
 maxUploadSize = 100
 
 [theme]
