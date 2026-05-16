@@ -1,33 +1,36 @@
-# ── Core UI ──────────────────────────────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════════════
+# RecruitAI — Resume Auto-Selection DSS
+# requirements.txt  (tested on Python 3.11, venv)
+# ═══════════════════════════════════════════════════════════════════
+
+# ── Core UI ──────────────────────────────────────────────────────
 streamlit==1.43.2
-streamlit-extras==0.5.0
 
-# ── PDF Parsing ───────────────────────────────────────────────────────────────
-pdfplumber==0.11.4
-pymupdf==1.24.14
+# ── PDF Parsing ──────────────────────────────────────────────────
+pdfplumber==0.11.4          # primary text extraction
+pymupdf==1.24.14            # fallback extraction + Vision OCR rendering
+pillow==11.3.0              # image processing (used with PyMuPDF)
+pytesseract==0.3.13         # optional: local Tesseract OCR (needs binary)
 
-# ── AI / LLM ─────────────────────────────────────────────────────────────────
-groq==0.13.1
-sentence-transformers==3.3.1
+# ── AI / LLM ─────────────────────────────────────────────────────
+groq==0.13.1                # Groq API client (LLM + Vision inference)
+sentence-transformers==3.3.1  # semantic skill matching (local embeddings)
 
-# ── Database ──────────────────────────────────────────────────────────────────
-supabase==2.11.0
+# ── Database ─────────────────────────────────────────────────────
+supabase==2.11.0            # Supabase client (PostgreSQL)
 
-# ── Data Science ─────────────────────────────────────────────────────────────
+# ── Data Science ─────────────────────────────────────────────────
 numpy==1.26.4
 pandas==2.2.3
 scipy==1.13.1
 
-# ── Visualization ────────────────────────────────────────────────────────────
+# ── Visualization ────────────────────────────────────────────────
 plotly==5.24.1
-altair==5.4.1
 
-# ── Export ───────────────────────────────────────────────────────────────────
-openpyxl==3.1.5
-reportlab==4.2.5
-fpdf2==2.8.1
+# ── Export ───────────────────────────────────────────────────────
+openpyxl==3.1.5             # Excel export
 
-# ── Utilities ────────────────────────────────────────────────────────────────
+# ── Utilities ────────────────────────────────────────────────────
 python-dotenv==1.0.1
 pydantic==2.9.2
 tenacity==9.0.0

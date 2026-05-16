@@ -1,12 +1,13 @@
 """
-Page 4 — Run Analysis
-Execute the full ensemble MCDM pipeline for a selected vacancy.
+Page 4 — Jalankan Analisis
+Satu klik untuk menjalankan seluruh pipeline analisis kandidat.
 """
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 import streamlit as st
 import pandas as pd
+import time
 
 from db.repositories import (
     list_vacancies, list_candidates, get_ahp_matrix,
@@ -20,33 +21,46 @@ from core.mcdm.topsis import run_topsis
 from core.mcdm.ensemble import run_ensemble
 from core.llm_explainer import generate_explanation
 
-st.set_page_config(page_title="Run Analysis · DSS", page_icon="⚡", layout="wide")
+st.set_page_config(page_title="Analisis Kandidat · RecruitAI", page_icon="🚀", layout="wide")
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 .page-header {
-    background: linear-gradient(135deg, #0a0a23, #1a1a3e, #2d1b69);
-    border-radius: 12px; padding: 1.5rem 2rem; margin-bottom: 1.5rem;
-    border-left: 4px solid #f59e0b;
+    background: linear-gradient(135deg, #0a0a1a, #1a1a3e, #0d2137);
+    border-radius: 14px; padding: 1.5rem 2rem; margin-bottom: 1.8rem;
+    border-left: 5px solid #f59e0b;
 }
-.page-header h2 { color: #fef9c3; margin: 0; }
-.page-header p  { color: #94a3b8; margin: 0.3rem 0 0; }
-.log-box {
+.page-header h2 { color: #fef9c3; margin: 0; font-size: 1.5rem; }
+.page-header p  { color: #94a3b8; margin: 0.3rem 0 0; font-size: 0.9rem; }
+.checklist-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 0.9rem 1.2rem;
+    background: #1e293b; border-radius: 10px; margin-bottom: 0.5rem;
+    border: 1px solid rgba(100,116,139,0.25);
+}
+.check-icon { font-size: 1.4rem; flex-shrink: 0; }
+.check-text { flex: 1; }
+.check-title { color: #e2e8f0; font-weight: 600; font-size: 0.9rem; }
+.check-sub   { color: #64748b; font-size: 0.8rem; margin-top: 1px; }
+.check-ok    { color: #34d399; font-weight: 700; }
+.check-err   { color: #f87171; font-weight: 700; }
+.log-container {
     background: #0d1117; border: 1px solid #21262d;
-    border-radius: 8px; padding: 1rem; font-family: monospace;
-    font-size: 0.82rem; color: #c9d1d9; max-height: 300px; overflow-y: auto;
+    border-radius: 10px; padding: 1rem 1.2rem; max-height: 280px;
+    overflow-y: auto; font-family: 'Courier New', monospace; font-size: 0.82rem;
 }
-.log-ok  { color: #3fb950; }
-.log-err { color: #f85149; }
-.log-info{ color: #58a6ff; }
+.log-ok   { color: #3fb950; }
+.log-err  { color: #f85149; }
+.log-info { color: #58a6ff; }
+.log-warn { color: #e3b341; }
 </style>
 """, unsafe_allow_html=True)
 
 st.markdown("""<div class="page-header">
-  <h2>⚡ Run Ensemble Analysis</h2>
-  <p>Execute SAW · WP · TOPSIS · Borda Count ensemble + AI explanations</p>
+  <h2>🚀 Jalankan Analisis Kandidat</h2>
+  <p>Sistem akan membandingkan semua kandidat dan menghasilkan peringkat secara otomatis</p>
 </div>""", unsafe_allow_html=True)
 
 
@@ -57,17 +71,18 @@ except Exception:
     vacancies = []
 
 if not vacancies:
-    st.warning("No vacancies found. Create one first.")
+    st.warning("Belum ada lowongan. Buat lowongan terlebih dahulu.")
     st.stop()
 
-vacancy_map = {f"[{v['job_family']}] {v['title']}": v for v in vacancies}
-selected_label = st.selectbox("Select Job Vacancy", list(vacancy_map.keys()))
+vacancy_map = {f"{v['title']} ({v['job_family']})": v for v in vacancies}
+selected_label = st.selectbox("Pilih Lowongan yang Akan Dianalisis", list(vacancy_map.keys()))
 vacancy = vacancy_map[selected_label]
 vacancy_id = vacancy["id"]
 
+st.markdown("<br>", unsafe_allow_html=True)
 
-# ── Pre-flight Checks ─────────────────────────────────────────────────────────
-col_a, col_b, col_c = st.columns(3)
+# ── Pre-flight Checklist ──────────────────────────────────────────────────────
+st.markdown("### ✅ Persiapan Analisis")
 
 try:
     candidates = list_candidates(vacancy_id)
@@ -82,65 +97,108 @@ try:
 except Exception:
     ahp_ok, weights = False, None
 
-with col_a:
-    icon = "✅" if n_ok >= 2 else "❌"
-    st.metric("Parsed Candidates", f"{n_ok}", help="Min 2 required")
-    st.markdown(f"{icon} {'Ready' if n_ok>=2 else 'Need ≥2 candidates'}")
+try:
+    existing_results = get_scoring_results(vacancy_id)
+    has_existing = len(existing_results) > 0
+except Exception:
+    has_existing = False
 
-with col_b:
-    icon = "✅" if ahp_ok else "❌"
-    st.metric("AHP Weights", "Valid" if ahp_ok else "Missing", help="Run AHP Wizard first")
-    st.markdown(f"{icon} {'Weights loaded' if ahp_ok else 'Go to AHP Wizard'}")
+# Checklist items
+def checklist_item(icon, title, sub, status_text, is_ok):
+    cls = "check-ok" if is_ok else "check-err"
+    return f"""
+    <div class="checklist-item">
+        <div class="check-icon">{icon}</div>
+        <div class="check-text">
+            <div class="check-title">{title}</div>
+            <div class="check-sub">{sub}</div>
+        </div>
+        <div class="{cls}">{status_text}</div>
+    </div>"""
 
-with col_c:
-    st.metric("Ensemble Methods", "3 (SAW + WP + TOPSIS)")
-    st.markdown("✅ Ready")
-
-
-# ── Run Button ────────────────────────────────────────────────────────────────
-st.markdown("---")
-options_col, _ = st.columns([2, 3])
-with options_col:
-    include_ai = st.checkbox("🤖 Generate AI explanations (slower)", value=True)
-    overwrite = st.checkbox("♻️ Overwrite existing results", value=True)
+st.markdown(
+    checklist_item("📄", "CV Kandidat Siap",
+                   f"{len(candidates)} CV ditemukan, {n_ok} berhasil dibaca AI",
+                   "✓ Siap" if n_ok >= 2 else f"✗ Perlu min. 2 CV (sekarang: {n_ok})",
+                   n_ok >= 2),
+    unsafe_allow_html=True
+)
+st.markdown(
+    checklist_item("⚖️", "Prioritas Kriteria Sudah Diatur",
+                   "Bobot kriteria diperlukan untuk perbandingan",
+                   "✓ Sudah diatur" if ahp_ok else "✗ Belum diatur — buka menu 'Atur Prioritas'",
+                   ahp_ok),
+    unsafe_allow_html=True
+)
+if has_existing:
+    st.markdown(
+        checklist_item("🔄", "Hasil Sebelumnya Ditemukan",
+                       "Hasil lama akan diganti saat analisis dijalankan ulang",
+                       "ℹ️ Ada hasil sebelumnya", True),
+        unsafe_allow_html=True
+    )
 
 all_ready = n_ok >= 2 and ahp_ok
 
-run_btn = st.button(
-    "🚀 Run Full Analysis",
-    type="primary",
-    disabled=not all_ready,
-    use_container_width=False,
-)
+st.markdown("<br>", unsafe_allow_html=True)
+
+# ── Options & Run ─────────────────────────────────────────────────────────────
+st.markdown("### ⚙️ Opsi Analisis")
+col_opt, col_btn = st.columns([3, 2])
+
+with col_opt:
+    include_ai = st.checkbox(
+        "🤖 Buat penjelasan AI untuk setiap kandidat",
+        value=True,
+        help="AI akan menulis ulasan singkat per kandidat dalam Bahasa Indonesia. Proses lebih lama namun hasil lebih informatif."
+    )
+    if has_existing:
+        overwrite = st.checkbox("♻️ Timpa hasil analisis sebelumnya", value=True)
+    else:
+        overwrite = True
+
+with col_btn:
+    st.markdown("<br>", unsafe_allow_html=True)
+    run_btn = st.button(
+        "🚀  Mulai Analisis Sekarang",
+        type="primary",
+        disabled=not all_ready,
+        use_container_width=True,
+    )
 
 if not all_ready:
-    missing = []
-    if n_ok < 2: missing.append("≥2 successfully parsed candidates")
-    if not ahp_ok: missing.append("valid AHP weights")
-    st.warning(f"Missing: {', '.join(missing)}")
+    if n_ok < 2:
+        st.error(f"⚠️ Butuh minimal 2 CV yang berhasil dibaca. Sekarang hanya ada **{n_ok}**. Upload lebih banyak CV.")
+    if not ahp_ok:
+        st.error("⚠️ Prioritas kriteria belum diatur. Buka menu **'⚖️ Atur Prioritas'** terlebih dahulu.")
 
+
+# ── Run Pipeline ──────────────────────────────────────────────────────────────
 if run_btn and all_ready:
     logs = []
 
-    def log(msg, style="info"):
-        logs.append((msg, style))
+    def log(msg, level="info"):
+        ts = time.strftime("%H:%M:%S")
+        logs.append((f"[{ts}] {msg}", level))
 
-    log_placeholder = st.empty()
+    log_box = st.empty()
 
     def refresh_log():
-        html = "<div class='log-box'>"
-        for msg, sty in logs:
-            html += f"<div class='log-{sty}'>{msg}</div>"
-        html += "</div>"
-        log_placeholder.markdown(html, unsafe_allow_html=True)
+        html = '<div class="log-container">'
+        for msg, lvl in logs:
+            html += f'<div class="log-{lvl}">{msg}</div>'
+        html += '</div>'
+        log_box.markdown(html, unsafe_allow_html=True)
 
-    log("▶ Starting analysis pipeline…")
+    st.markdown("### 📋 Progress Analisis")
+    progress_bar = st.progress(0)
+    status_text  = st.empty()
+
+    log("▶ Memulai analisis...", "info")
     refresh_log()
 
-    # ── Step 1: Collect parsed profiles
-    log(f"📋 Loading {n_ok} candidate profiles…")
-    refresh_log()
-
+    # Step 1: Load candidates
+    status_text.markdown("**Memuat data kandidat...**")
     parsed_candidates = []
     for c in candidates:
         if c.get("parsing_status") != "success" or not c.get("parsed_profile"):
@@ -148,65 +206,64 @@ if run_btn and all_ready:
         profile = CandidateProfile(**c["parsed_profile"])
         parsed_candidates.append({"db": c, "profile": profile})
 
-    log(f"✅ Loaded {len(parsed_candidates)} profiles.", "ok")
+    log(f"✓ {len(parsed_candidates)} profil kandidat dimuat", "ok")
+    progress_bar.progress(15)
     refresh_log()
 
-    # ── Step 2: Compute dimension scores
-    log("📐 Computing 5-dimension scores…")
-    refresh_log()
-
+    # Step 2: Dimension scores
+    status_text.markdown("**Menghitung skor kesesuaian kandidat...**")
     dim_rows = {}
     for item in parsed_candidates:
         cid = item["db"]["id"]
         dims = compute_dimensions(item["profile"], vacancy)
         dim_rows[cid] = dims
-        log(f"  {item['profile'].name or item['db']['original_filename']}: {dims}")
+        name = item["profile"].name or item["db"]["original_filename"]
+        log(f"  ✓ {name} — pendidikan:{dims['education']:.2f} pengalaman:{dims['experience']:.2f} skill:{dims['skills']:.2f}", "ok")
+
+    progress_bar.progress(35)
     refresh_log()
 
-    log("✅ Dimension scores computed.", "ok")
-    refresh_log()
-
-    # ── Step 3: Build decision matrix
+    # Step 3: Decision matrix
     criteria_order = ["education", "experience", "skills", "certifications", "languages"]
     dm_data = {cid: [dims[c] for c in criteria_order] for cid, dims in dim_rows.items()}
     dm = pd.DataFrame.from_dict(dm_data, orient="index", columns=criteria_order)
-
-    log(f"📊 Decision matrix shape: {dm.shape}")
+    log(f"✓ Matriks perbandingan siap ({dm.shape[0]} kandidat × {dm.shape[1]} kriteria)", "info")
+    progress_bar.progress(45)
     refresh_log()
 
-    # ── Step 4: MCDM
-    log("⚡ Running SAW…")
-    saw_scores = run_saw(dm, weights)
-    log("⚡ Running Weighted Product…")
-    wp_scores = run_wp(dm, weights)
-    log("⚡ Running TOPSIS…")
+    # Step 4: MCDM
+    status_text.markdown("**Menjalankan algoritma perbandingan...**")
+    saw_scores    = run_saw(dm, weights)
+    wp_scores     = run_wp(dm, weights)
     topsis_scores = run_topsis(dm, weights)
-    log("⚡ Running Borda Count Ensemble…")
-    ensemble_df = run_ensemble({"SAW": saw_scores, "WP": wp_scores, "TOPSIS": topsis_scores})
-
-    log("✅ All MCDM algorithms complete.", "ok")
+    ensemble_df   = run_ensemble({"SAW": saw_scores, "WP": wp_scores, "TOPSIS": topsis_scores})
+    log("✓ Analisis multi-kriteria selesai (3 metode)", "ok")
+    progress_bar.progress(60)
     refresh_log()
 
-    # ── Step 5: AI Explanations
+    # Step 5: Save & AI explanations
     if overwrite:
         try:
             delete_scoring_results(vacancy_id)
         except Exception:
             pass
 
-    for _, row in ensemble_df.iterrows():
-        cid = row["candidate_id"]
+    n_total = len(ensemble_df)
+    for idx, (_, row) in enumerate(ensemble_df.iterrows()):
+        cid  = row["candidate_id"]
         item = next(x for x in parsed_candidates if x["db"]["id"] == cid)
         profile = item["profile"]
         dims = dim_rows[cid]
         rank = int(row["ensemble_rank"])
+        name = profile.name or item["db"]["original_filename"]
 
         ai_text = ""
         if include_ai:
-            log(f"🤖 Generating explanation for #{rank} {profile.name}…")
+            status_text.markdown(f"**Membuat ulasan AI untuk kandidat #{rank}: {name}...**")
+            log(f"  🤖 Menyusun ulasan AI untuk #{rank} {name}...", "info")
             refresh_log()
             ai_text = generate_explanation(
-                candidate_name=profile.name or item["db"]["original_filename"],
+                candidate_name=name,
                 ensemble_rank=rank,
                 dimension_scores=dims,
                 saw_score=float(row["SAW_score"]),
@@ -214,6 +271,7 @@ if run_btn and all_ready:
                 topsis_score=float(row["TOPSIS_score"]),
                 vacancy_title=vacancy["title"],
                 vacancy_requirements=vacancy,
+                candidate_profile=profile.model_dump(),
             )
 
         upsert_scoring_result({
@@ -232,9 +290,13 @@ if run_btn and all_ready:
             "ai_explanation": ai_text,
         })
 
-    log("✅ All results saved to database!", "ok")
-    log("🎉 Analysis complete. Go to Results Dashboard →", "ok")
+        progress_bar.progress(60 + int(40 * (idx + 1) / n_total))
+        log(f"  ✓ #{rank} {name} berhasil disimpan", "ok")
+        refresh_log()
+
+    progress_bar.progress(100)
+    status_text.empty()
+    log("🎉 Analisis selesai! Buka menu 'Lihat Hasil' untuk melihat peringkat.", "ok")
     refresh_log()
 
-    st.success("✅ Analysis complete! Navigate to **Results Dashboard** to see rankings.")
-    st.balloons()
+    st.success("✅ Analisis selesai! Silakan buka **📊 Lihat Hasil** di menu sebelah kiri.")

@@ -7,12 +7,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ── App ───────────────────────────────────────────────────────────────────────
-APP_NAME = os.getenv("APP_NAME", "Resume Auto-Selection DSS")
+APP_NAME = os.getenv("APP_NAME", "RecruitAI — Sistem Seleksi Kandidat")
 APP_ENV  = os.getenv("APP_ENV", "development")
 
 # ── Groq ──────────────────────────────────────────────────────────────────────
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
-GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_API_KEY      = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL        = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 
 # ── Embedding ─────────────────────────────────────────────────────────────────
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "all-MiniLM-L6-v2")
@@ -28,17 +29,17 @@ AHP_RI = {1: 0.0, 2: 0.0, 3: 0.58, 4: 0.90, 5: 1.12,
 
 AHP_CRITERIA = ["Education", "Experience", "Skills", "Certifications", "Languages"]
 
-# Saaty scale labels for pairwise comparison
+# Saaty scale labels for pairwise comparison (Indonesian)
 SAATY_SCALE = {
-    1: "Equally important",
-    2: "Equal to moderate importance",
-    3: "Moderately more important",
-    4: "Moderate to strong importance",
-    5: "Strongly more important",
-    6: "Strong to very strong importance",
-    7: "Very strongly more important",
-    8: "Very strong to extremely important",
-    9: "Extremely more important",
+    1: "Sama penting",
+    2: "Sama hingga sedikit lebih penting",
+    3: "Sedikit lebih penting",
+    4: "Sedikit hingga cukup lebih penting",
+    5: "Cukup lebih penting",
+    6: "Cukup hingga sangat lebih penting",
+    7: "Sangat lebih penting",
+    8: "Sangat hingga jauh lebih penting",
+    9: "Jauh lebih penting (mutlak)",
 }
 
 # ── Scoring Bounds ────────────────────────────────────────────────────────────

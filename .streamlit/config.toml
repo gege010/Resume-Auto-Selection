@@ -3,6 +3,7 @@
 port = 8501
 address = "localhost"
 maxUploadSize = 100
+fileWatcherType = "none"
 
 [theme]
 base = "dark"
